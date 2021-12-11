@@ -1,0 +1,299 @@
+/**
+  ******************************************************************************
+  * @file    BSP/Src/main.c 
+  * @author  MCD Application Team
+  * @brief   Main program body
+  ******************************************************************************
+
+  * @brief  Main program
+  * @param  None
+  * @retval None
+  */
+
+#include "main.h"
+
+//  pins and clock for the LED
+
+#define LED2_PIN                         GPIO_PIN_14
+#define LED2_GPIO_PORT                   GPIOB
+#define LED2_GPIO_CLK_ENABLE()           __HAL_RCC_GPIOB_CLK_ENABLE()
+#define LED2_GPIO_CLK_DISABLE()          __HAL_RCC_GPIOB_CLK_DISABLE()
+
+// pins and clocks for USART
+
+#define DISCOVERY_COM1                          USART1
+#define DISCOVERY_COM1_CLK_ENABLE()             __HAL_RCC_USART1_CLK_ENABLE()
+#define DISCOVERY_COM1_CLK_DISABLE()            __HAL_RCC_USART1_CLK_DISABLE()
+
+#define DISCOVERY_COM1_TX_PIN                   GPIO_PIN_6
+#define DISCOVERY_COM1_TX_GPIO_PORT             GPIOB
+#define DISCOVERY_COM1_TX_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()   
+#define DISCOVERY_COM1_TX_GPIO_CLK_DISABLE()    __HAL_RCC_GPIOB_CLK_DISABLE()  
+#define DISCOVERY_COM1_TX_AF                    GPIO_AF7_USART1
+
+#define DISCOVERY_COM1_RX_PIN                   GPIO_PIN_7
+#define DISCOVERY_COM1_RX_GPIO_PORT             GPIOB
+#define DISCOVERY_COM1_RX_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()   
+#define DISCOVERY_COM1_RX_GPIO_CLK_DISABLE()    __HAL_RCC_GPIOB_CLK_DISABLE()  
+#define DISCOVERY_COM1_RX_AF                    GPIO_AF7_USART1
+
+UART_HandleTypeDef hDiscoUart;
+TIM_HandleTypeDef  TimHandle;
+GPIO_InitTypeDef  gpio_init_structure;
+TIM_OC_InitTypeDef TimOCHandle;
+
+/* Private function prototypes -----------------------------------------------*/
+static void SystemClock_Config(void);
+void LED2_Init(void);
+void BSP_COM_Init( UART_HandleTypeDef *);
+void LED2_On(void);
+void LED2_Off(void);
+void LED2_Toggle(void);
+int __io_putchar(int);
+HAL_StatusTypeDef  configure_timer2(void);
+
+int main(void)
+{
+  int i;
+  int n = 1;
+  int brightness = 0;
+ 
+
+  /* STM32L4xx HAL library initialization:
+       - Configure the Flash prefetch, Flash preread and Buffer caches
+       - Systick timer is configured by default as source of time base, but user 
+             can eventually implement his proper time base source (a general purpose 
+             timer for example or other time source), keeping in mind that Time base 
+             duration should be kept 1ms since PPP_TIMEOUT_VALUEs are defined and 
+             handled in milliseconds basis.
+       - Low Level Initialization
+     */
+  HAL_Init();
+
+  /* Configure the System clock to have a frequency of 80 MHz */
+  SystemClock_Config();
+
+  
+    /* Initialize all configured peripherals */
+    hDiscoUart.Instance = DISCOVERY_COM1;
+    hDiscoUart.Init.BaudRate = 115200;
+    hDiscoUart.Init.WordLength = UART_WORDLENGTH_8B;
+    hDiscoUart.Init.StopBits = UART_STOPBITS_1;
+    hDiscoUart.Init.Parity = UART_PARITY_NONE;
+    hDiscoUart.Init.Mode = UART_MODE_TX_RX;
+    hDiscoUart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    hDiscoUart.Init.OverSampling = UART_OVERSAMPLING_16;
+    hDiscoUart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+    hDiscoUart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+
+    BSP_COM_Init(&hDiscoUart);
+
+    /* Configure the User LED */
+    LED2_Init();
+    printf("Welcome to fadding LEDs !\n");
+    if (configure_timer2() == HAL_OK)
+      if ( HAL_TIM_PWM_Start(&TimHandle,TIM_CHANNEL_1)  == HAL_OK )
+	{
+	  printf("Starting,,,,, \n");
+	  while (1) 
+	    { 
+	      if (brightness >= 1000) {// if  brightness maximum change direction 
+		n = -1;
+		printf("Change  ");
+	      }
+	      if (brightness <= 0) n = 1;  // if  brightness minimum change direction  
+	      brightness += n; // increment or decrement  brightness refer by direction 
+	      TIM2->CCR1 = brightness; // set brightness
+	      //printf("Brightness = %d ",brightness);
+	      for( i=0;i !=1000; i++); //delay
+	    } 
+	}
+      else
+	printf("COuln't start the timer!\n");
+}
+
+static void SystemClock_Config(void)
+{
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
+  RCC_OscInitTypeDef RCC_OscInitStruct;
+
+  /* MSI is enabled after System reset, activate PLL with MSI as source */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
+  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_MSI;
+  RCC_OscInitStruct.PLL.PLLM = 1;
+  RCC_OscInitStruct.PLL.PLLN = 40;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLP = 7;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
+  if(HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    /* Initialization Error */
+    while(1);
+  }
+  
+  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2 
+     clocks dividers */
+  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;  
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;  
+  if(HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
+  {
+    /* Initialization Error */
+    while(1);
+  }
+}
+
+/*
+Inititalise the LED2 GPIO port
+*/
+
+void LED2_Init(void)
+{
+
+   LED2_GPIO_CLK_ENABLE();
+  /* Configure the GPIO_LED pin */
+  gpio_init_structure.Pin   = LED2_PIN;
+  gpio_init_structure.Mode  = GPIO_MODE_AF_PP;
+  gpio_init_structure.Pull  = GPIO_NOPULL;
+  gpio_init_structure.Speed = GPIO_SPEED_FREQ_HIGH;
+  gpio_init_structure.Alternate = GPIO_AF14_TIM2;
+  
+  HAL_GPIO_Init(LED2_GPIO_PORT, &gpio_init_structure);
+}
+
+
+/*
+ initialise the COM port
+*/
+
+void BSP_COM_Init(UART_HandleTypeDef *huart)
+{
+  GPIO_InitTypeDef gpio_init_structure;
+
+  /* Enable GPIO RX/TX clocks */
+  DISCOVERY_COM1_TX_GPIO_CLK_ENABLE();
+  DISCOVERY_COM1_RX_GPIO_CLK_ENABLE();
+
+  /* Enable USART clock */
+  DISCOVERY_COM1_CLK_ENABLE();
+
+  /* Configure USART Tx as alternate function */
+  gpio_init_structure.Pin = DISCOVERY_COM1_TX_PIN;
+  gpio_init_structure.Mode = GPIO_MODE_AF_PP;
+  gpio_init_structure.Speed = GPIO_SPEED_FREQ_HIGH;
+  gpio_init_structure.Pull = GPIO_NOPULL;
+  gpio_init_structure.Alternate = DISCOVERY_COM1_TX_AF;
+  HAL_GPIO_Init(DISCOVERY_COM1_TX_GPIO_PORT, &gpio_init_structure);
+
+  /* Configure USART Rx as alternate function */
+  gpio_init_structure.Pin = DISCOVERY_COM1_RX_PIN;
+  gpio_init_structure.Mode = GPIO_MODE_AF_PP;
+  gpio_init_structure.Alternate = DISCOVERY_COM1_RX_AF;
+  HAL_GPIO_Init(DISCOVERY_COM1_RX_GPIO_PORT, &gpio_init_structure);
+
+  /* USART configuration */
+  huart->Instance = DISCOVERY_COM1;
+  HAL_UART_Init(huart);
+}
+
+
+HAL_StatusTypeDef  configure_timer2()
+{
+
+  //TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStruct;
+  //TIM_OCInitTypeDef TIM_OCInitStruct;
+   	
+	//RCC_APB1PeriphClockCmd( RCC_APB1Periph_TIM3, ENABLE);
+	__HAL_RCC_TIM2_CLK_ENABLE();
+	
+	/* Initialize TIM2 */
+	TimHandle.Instance = TIM2;
+	
+	//RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC |RCC_APB2Periph_AFIO, ENABLE);
+  	
+ 	/* Configure PC6 in output pushpull mode */ 
+ 	//GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6; 
+ 	//GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz; 
+ 	//GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;            // Alt Function - Push Pull
+  	//GPIO_Init(GPIOC, &GPIO_InitStructure);	
+ 	//GPIO_PinRemapConfig( GPIO_FullRemap_TIM3, ENABLE );        // Map TIM3_CH1 to GPIOC_Pin6 
+
+	// Let PWM frequency equal 100Hz.
+    	// Let period equal 1000. Therefore, timer runs from zero to 1000. Gives 0.1Hz resolution.
+   	 // Solving for prescaler gives 240.
+   	//??TIM_TimeBaseStructInit( &TIM_TimeBaseInitStruct );
+    	//TIM_TimeBaseInitStruct.TIM_ClockDivision = TIM_CKD_DIV4;
+    	//TIM_TimeBaseInitStruct.TIM_Period = 1000 - 1;   // 0..999
+    	//TIM_TimeBaseInitStruct.TIM_Prescaler = 240 - 1; // Div 240
+    	//??TIM_TimeBaseInit( TIM3, &TIM_TimeBaseInitStruct );
+
+    	//??TIM_OCStructInit( &TIM_OCInitStruct );
+    	//??TIM_OCInitStruct.TIM_OutputState = TIM_OutputState_Enable;
+    	//TIM_OCInitStruct.TIM_OCMode = TIM_OCMode_PWM1;
+    	// Initial duty cycle equals 0%. Value can range from zero to 999.
+    	//TIM_OCInitStruct.TIM_Pulse = 0; // 0 .. 1000 (0=Always Off, 999=Always On)
+    	//TIM_OC1Init( TIM3, &TIMOCHANDLE );	
+    	//?TIM_Cmd( TIM3, ENABLE );
+
+
+	//NVIC_InitTypeDef nvicStructure;
+	
+	TimHandle.Init.Period =1000000U;// 1000 - 1;   // 0..999
+	TimHandle.Init.Prescaler =  100; //240 - 1; // Div 240
+	TimHandle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	TimHandle.Init.CounterMode = TIM_COUNTERMODE_UP;
+	TimHandle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if ( HAL_TIM_PWM_Init(&TimHandle) != HAL_OK)
+	  return HAL_ERROR;
+  
+	if ( HAL_TIM_PWM_Init(&TimHandle) != HAL_OK)
+	  return HAL_ERROR;
+  
+
+	if ( HAL_TIMEx_RemapConfig(&TimHandle, TIM_TIM2_TI4_GPIO) != HAL_OK)
+	  return HAL_ERROR;
+  
+	TimOCHandle.OCMode = TIM_OCMODE_PWM1;
+	TimOCHandle.Pulse= 0;
+	TIM_OC2_SetConfig(TIM2, &TimOCHandle);
+	return HAL_OK;  
+}
+/*
+
+Turn LED2 on
+
+*/
+void LED2_On(void)
+{
+  HAL_GPIO_WritePin(LED2_GPIO_PORT, LED2_PIN, GPIO_PIN_SET);
+}
+
+/* 
+turn LED2 off
+*/
+
+void LED2_Off(void)
+{
+  HAL_GPIO_WritePin(LED2_GPIO_PORT, LED2_PIN, GPIO_PIN_RESET);
+}
+
+void LED2_Toggle(void)
+{
+  HAL_GPIO_TogglePin(LED2_GPIO_PORT, LED2_PIN);
+}
+
+int __io_putchar(int ch)
+{
+  /* write a character to the serial port and Loop until the end of transmission */
+  while (HAL_OK != HAL_UART_Transmit(&hDiscoUart, (uint8_t *) &ch, 1, 30000))
+  {
+    ;
+  }
+  return ch;
+}
