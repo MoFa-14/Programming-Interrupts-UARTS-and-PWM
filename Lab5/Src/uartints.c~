@@ -39,6 +39,8 @@
 #define DISCOVERY_COM1_RX_AF                    GPIO_AF7_USART1
 
 UART_HandleTypeDef hDiscoUart;
+//EXTI_HandleTypeDef hexti;
+//EXTI_ConfigTypeDef pEXTiConfig;
 int ch;
 int done =0;
 
