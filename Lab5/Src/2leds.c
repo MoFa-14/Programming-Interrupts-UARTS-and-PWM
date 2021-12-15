@@ -3,8 +3,29 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-TIM_HandleTypeDef htim1,htim2;
+// pins and clocks for USART
+
+#define DISCOVERY_COM1                          USART1
+#define DISCOVERY_COM1_CLK_ENABLE()             __HAL_RCC_USART1_CLK_ENABLE()
+#define DISCOVERY_COM1_CLK_DISABLE()            __HAL_RCC_USART1_CLK_DISABLE()
+
+#define DISCOVERY_COM1_TX_PIN                   GPIO_PIN_6
+#define DISCOVERY_COM1_TX_GPIO_PORT             GPIOB
+#define DISCOVERY_COM1_TX_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()   
+#define DISCOVERY_COM1_TX_GPIO_CLK_DISABLE()    __HAL_RCC_GPIOB_CLK_DISABLE()  
+#define DISCOVERY_COM1_TX_AF                    GPIO_AF7_USART1
+
+#define DISCOVERY_COM1_RX_PIN                   GPIO_PIN_7
+#define DISCOVERY_COM1_RX_GPIO_PORT             GPIOB
+#define DISCOVERY_COM1_RX_GPIO_CLK_ENABLE()     __HAL_RCC_GPIOB_CLK_ENABLE()   
+#define DISCOVERY_COM1_RX_GPIO_CLK_DISABLE()    __HAL_RCC_GPIOB_CLK_DISABLE()  
+#define DISCOVERY_COM1_RX_AF                    GPIO_AF7_USART1
+
+UART_HandleTypeDef hDiscoUart;
+TIM_HandleTypeDef htim15,htim2;
 static void SystemClock_Config(void);
+void BSP_COM_Init( UART_HandleTypeDef *);
+int __io_putchar(int);
 void TIM_Init(void);
 
 int main(void) {
@@ -13,25 +34,41 @@ int main(void) {
   /* Configure the System clock to have a frequency of 80 MHz */
   SystemClock_Config();
 
+  /* Initialize all configured peripherals */
+  hDiscoUart.Instance = DISCOVERY_COM1;
+  hDiscoUart.Init.BaudRate = 115200;
+  hDiscoUart.Init.WordLength = UART_WORDLENGTH_8B;
+  hDiscoUart.Init.StopBits = UART_STOPBITS_1;
+  hDiscoUart.Init.Parity = UART_PARITY_NONE;
+  hDiscoUart.Init.Mode = UART_MODE_TX_RX;
+  hDiscoUart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hDiscoUart.Init.OverSampling = UART_OVERSAMPLING_16;
+  hDiscoUart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hDiscoUart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+
+  BSP_COM_Init(&hDiscoUart);
+  
   TIM_Init();
 
-  //HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  
+  __HAL_TIM_MOE_ENABLE(&htim15);
+  printf("done MOE\n");
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_1);
+  printf("Started \n");
   /* Connect a LED to PA5 pin to see the fading effect */
-  //uint16_t dutyCycle = HAL_TIM_ReadCapturedValue(&htim2, TIM_CHANNEL_1);
-  uint16_t dutyCycle = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_1);
+  uint16_t dutyCycle = HAL_TIM_ReadCapturedValue(&htim2, TIM_CHANNEL_1);
+  //uint16_t dutyCycle = HAL_TIM_ReadCapturedValue(&htim15, TIM_CHANNEL_1);
    
   while(1) {
-    while(dutyCycle < __HAL_TIM_GET_AUTORELOAD(&htim1)) {
-      __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, ++dutyCycle); // this can be doe with TIM2->CCR1 = ++dutyCycle; instead
-      //TIM1->CCR1 = dutyCycle;
+    while(dutyCycle < __HAL_TIM_GET_AUTORELOAD(&htim15)) {
+      __HAL_TIM_SET_COMPARE(&htim15, TIM_CHANNEL_1, ++dutyCycle); // this can be doe with TIM2->CCR1 = ++dutyCycle; instead
+      TIM2->CCR1 = dutyCycle;
       HAL_Delay(1);
     }
 
     while(dutyCycle > 0) {
-      __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, --dutyCycle);// This can be done with TIM2->CCR1 = --dutyCycle;
-      //TIM1->CCR1 = dutyCycle; 
+      __HAL_TIM_SET_COMPARE(&htim15, TIM_CHANNEL_1, --dutyCycle);// This can be done with TIM2->CCR1 = --dutyCycle;
+      TIM2->CCR1 = dutyCycle; 
       HAL_Delay(1);
     }
   }
@@ -74,11 +111,45 @@ static void SystemClock_Config(void)
   }
 }
 
+/*
+ initialise the COM port
+*/
+
+void BSP_COM_Init(UART_HandleTypeDef *huart)
+{
+  GPIO_InitTypeDef gpio_init_structure;
+
+  /* Enable GPIO RX/TX clocks */
+  DISCOVERY_COM1_TX_GPIO_CLK_ENABLE();
+  DISCOVERY_COM1_RX_GPIO_CLK_ENABLE();
+
+  /* Enable USART clock */
+  DISCOVERY_COM1_CLK_ENABLE();
+
+  /* Configure USART Tx as alternate function */
+  gpio_init_structure.Pin = DISCOVERY_COM1_TX_PIN;
+  gpio_init_structure.Mode = GPIO_MODE_AF_PP;
+  gpio_init_structure.Speed = GPIO_SPEED_FREQ_HIGH;
+  gpio_init_structure.Pull = GPIO_NOPULL;
+  gpio_init_structure.Alternate = DISCOVERY_COM1_TX_AF;
+  HAL_GPIO_Init(DISCOVERY_COM1_TX_GPIO_PORT, &gpio_init_structure);
+
+  /* Configure USART Rx as alternate function */
+  gpio_init_structure.Pin = DISCOVERY_COM1_RX_PIN;
+  gpio_init_structure.Mode = GPIO_MODE_AF_PP;
+  gpio_init_structure.Alternate = DISCOVERY_COM1_RX_AF;
+  HAL_GPIO_Init(DISCOVERY_COM1_RX_GPIO_PORT, &gpio_init_structure);
+
+  /* USART configuration */
+  huart->Instance = DISCOVERY_COM1;
+  HAL_UART_Init(huart);
+}
+
 /* TIM1/2 init function */
 void TIM_Init(void) {
-  TIM_OC_InitTypeDef sConfigOC1, sConfigOC2;
+  TIM_OC_InitTypeDef sConfigOC1={0}, sConfigOC2;
 
-  /*  htim2.Instance = TIM2;
+  htim2.Instance = TIM2;
   htim2.Init.Prescaler = 499;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 999;
@@ -88,28 +159,28 @@ void TIM_Init(void) {
   sConfigOC2.Pulse = 499;
   sConfigOC2.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC2.OCFastMode = TIM_OCFAST_DISABLE;
-  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC2, TIM_CHANNEL_1); */
+  HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC2, TIM_CHANNEL_1);
 
-  htim1.Instance = TIM15;
-  htim1.Init.Prescaler = 499;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
-  HAL_TIM_PWM_Init(&htim1);
+  htim15.Instance = TIM15;
+  htim15.Init.Prescaler = 499;
+  htim15.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim15.Init.Period = 999;
+  HAL_TIM_PWM_Init(&htim15);
 
   sConfigOC1.OCMode = TIM_OCMODE_PWM1;
   sConfigOC1.Pulse = 499;
   sConfigOC1.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC1.OCFastMode = TIM_OCFAST_DISABLE;
-  HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_ConfigChannel(&htim15, &sConfigOC1, TIM_CHANNEL_1);
 }
 
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_base) {
   GPIO_InitTypeDef GPIO_InitStruct;
-  /* if(htim_base->Instance==TIM2) {
+   if(htim_base->Instance==TIM2) {
     __TIM2_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
-    TIM2 GPIO Configuration
-    PA5     ------> TIM2_CH1
+    /* TIM2 GPIO Configuration
+       PA5     ------> TIM2_CH1 */
     
     GPIO_InitStruct.Pin = GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -117,9 +188,9 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_base) {
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-   
-    } */
+   }
+   /* TIM15 GPIO Configuration
+      PB14     ------> TIM15_CH1 */
   if(htim_base->Instance==TIM15) {
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __TIM15_CLK_ENABLE();
@@ -132,5 +203,14 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_base) {
     }
 }
 
+int __io_putchar(int ch)
+{
+  /* write a character to the serial port and Loop until the end of transmission */
+  while (HAL_OK != HAL_UART_Transmit(&hDiscoUart, (uint8_t *) &ch, 1, 30000))
+  {
+    ;
+  }
+  return ch;
+}
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
