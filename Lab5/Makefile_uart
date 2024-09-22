@@ -12,7 +12,7 @@ stm32l4xx_hal_dma.o stm32l4xx_hal_uart.o stm32l4xx_hal_uart_ex.o stm32l4xx_hal_e
 
 # Tool path
 
-TOOLROOT		=/usr/bin
+TOOLROOT		=/opt/gcc-arm-none-eabi/bin
 
 # Library path
 
